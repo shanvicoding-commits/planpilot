@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planpilot — simple planner</title>
+<style>
+  :root{
+    --paper:#F6F1E7;
+    --ink:#1F2A44;
+    --muted:#7A705C;
+    --line:#D8CBAA;
+    --accent:#B5432D;
+    --done:#4B7A6F;
+    --card:#FFFDF8;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    padding:40px 20px;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:system-ui,sans-serif;
+    display:flex;
+    justify-content:center;
+  }
+  .app{width:100%;max-width:480px;}
+  h1{
+    font-size:1.8rem;
+    margin:0 0 4px;
+  }
+  p.sub{margin:0 0 24px;color:var(--muted);font-size:.95rem;}
+  form{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  input[type=text]{
+    flex:1;
+    padding:10px 12px;
+    border:1px solid var(--line);
+    border-radius:4px;
+    background:var(--card);
+    font-size:.95rem;
+    color:var(--ink);
+  }
+  input[type=date]{
+    padding:10px;
+    border:1px solid var(--line);
+    border-radius:4px;
+    background:var(--card);
+    font-size:.9rem;
+    color:var(--ink);
+  }
+  button{
+    padding:10px 16px;
+    border:none;
+    border-radius:4px;
+    background:var(--ink);
+    color:var(--paper);
+    font-size:.95rem;
+    cursor:pointer;
+  }
+  button:hover{opacity:.9;}
+  input:focus, button:focus-visible{
+    outline:2px solid var(--accent);
+    outline-offset:1px;
+  }
+  ul{list-style:none;margin:20px 0 0;padding:0;}
+  li{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:10px 12px;
+    margin-bottom:8px;
+  }
+  li.done .task-text{
+    text-decoration:line-through;
+    color:var(--muted);
+  }
+  li input[type=checkbox]{
+    width:18px;height:18px;
+    accent-color:var(--done);
+    cursor:pointer;
+  }
+  .task-text{flex:1;font-size:.95rem;}
+  .task-date{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .remove{
+    background:none;
+    color:var(--muted);
+    text-decoration:underline;
+    padding:2px 4px;
+    font-size:.8rem;
+  }
+  .remove:hover{color:var(--accent);}
+  .empty{color:var(--muted);font-size:.9rem;margin-top:20px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Planpilot</h1>
+  <p class="sub">A simple day planner. Add a task, tick it off when it's done.</p>
+
+  <form id="task-form">
+    <input type="text" id="task-text" placeholder="What do you need to do?" required>
+    <input type="date" id="task-date">
+    <button type="submit">Add</button>
+  </form>
+
+  <ul id="task-list"></ul>
+  <p id="empty-msg" class="empty">Nothing on your list yet — add your first task above.</p>
+</div>
+
+<script>
+  const STORAGE_KEY = 'planpilot_tasks_v1';
+  const form = document.getElementById('task-form');
+  const textInput = document.getElementById('task-text');
+  const dateInput = document.getElementById('task-date');
+  const listEl = document.getElementById('task-list');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  let tasks = load();
+
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = textInput.value.trim();
+    if (!text) return;
+    tasks.push({
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      text,
+      date: dateInput.value,
+      done: false
+    });
+    save();
+    form.reset();
+    render();
+  });
+
+  function toggleDone(id) {
+    const t = tasks.find(t => t.id === id);
+    if (t) t.done = !t.done;
+    save();
+    render();
+  }
+
+  function removeTask(id) {
+    tasks = tasks.filter(t => t.id !== id);
+    save();
+    render();
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (err) {
+      console.warn('Could not read saved tasks', err);
+      return [];
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    } catch (err) {
+      console.warn('Could not save tasks', err);
+    }
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function render() {
+    listEl.innerHTML = '';
+    const sorted = tasks.slice().sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return (a.date || '9999').localeCompare(b.date || '9999');
+    });
+
+    sorted.forEach(t => {
+      const li = document.createElement('li');
+      if (t.done) li.classList.add('done');
+      li.innerHTML = `
+        <input type="checkbox" ${t.done ? 'checked' : ''}>
+        <span class="task-text">${escapeHtml(t.text)}</span>
+        ${t.date ? `<span class="task-date">${t.date}</span>` : ''}
+        <button type="button" class="remove">remove</button>
+      `;
+      li.querySelector('input[type=checkbox]').addEventListener('change', () => toggleDone(t.id));
+      li.querySelector('.remove').addEventListener('click', () => removeTask(t.id));
+      listEl.appendChild(li);
+    });
+
+    emptyMsg.style.display = tasks.length ? 'none' : 'block';
+  }
+
+  render();
+</script>
+</body>
+</html>
